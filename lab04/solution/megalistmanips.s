@@ -13,12 +13,12 @@ end_msg:    .asciiz "Lists after: \n"
 .text
 main:
     jal create_default_list
-    mv s0, a0   # v0 = s0 is head of node list
+    mv s0, a0   # a0 = s0 is head of node list
 
     #print "lists before: "
     la a1, start_msg
     li a0, 4
-    ecall
+   ecall
 
     #print the list
     add a0, s0, x0
@@ -57,29 +57,44 @@ map:
     add s1, a1, x0      # save address of function in s1
     add t0, x0, x0      # t0 is a counter
 
-    # remember that each node is 12 bytes long:
-    # - 4 for the array pointer
-    # - 4 for the size of the array
-    # - 4 more for the pointer to the next node
 
-    # also keep in mind that we should not make ANY assumption on which registers
-    # are modified by the callees, even when we know the content inside the functions 
-    # we call. this is to enforce the abstraction barrier of calling convention.
 mapLoop:
-    add t1, s0, x0      # load the address of the array of current node into t1
+    # Mistak No. 1
+    # add t1, s0, x0
+    lw t1, 0(s0)        # load the address of the array of current node into t1
     lw t2, 4(s0)        # load the size of the node's array into t2
 
-    add t1, t1, t0      # offset the array address by the count
+    # Mistak No. 2
+    # incorrect offset
+    slli t3, t0, 2
+    add t1, t1, t3      # offset the array address by the count
     lw a0, 0(t1)        # load the value at that address into a0
 
+    # Mistak No. 3
+    # In the function call, whose address is stored in S1, the t1 will be changed
+    # so the t1 need to be saved before function call
+    addi sp sp -4
+    sw t1 0(sp)         # Save t1 before call
+
     jalr s1             # call the function on that value.
+    
+    # Mistak No. 3
+    # In the function call, whose address is stored in S1, the t1 will be changed
+    # so the t1 need to be restore after function call
+    lw t1 0(sp)         # Restore t1 after function call
+    addi sp sp 4
+    
 
     sw a0, 0(t1)        # store the returned value back into the array
     addi t0, t0, 1      # increment the count
     bne t0, t2, mapLoop # repeat if we haven't reached the array size yet
 
-    la a0, 8(s0)        # load the address of the next node into a0
-    lw a1, 0(s1)        # put the address of the function back into a1 to prepare for the recursion
+    # Mistak No. 4 
+    # la a0, 8(s0)
+    lw a0, 8(s0)        # load the address of the next node into a0
+    # Mistak No. 5
+    #lw a1, 0(s1)  
+    add a1, s1, x0      # put the address of the function back into a1 to prepare for the recursion
 
     jal  map            # recurse
 done:
@@ -87,6 +102,12 @@ done:
     lw s1, 4(sp)
     lw ra, 0(sp)
     addi sp, sp, 12
+    # Mistak No. 6
+    # jr ra function return call is not happening in done. So, that's why there are bunch of lines
+    # prints b/w the before and after arrays. 
+    # Since the line "jr ra" is not added the the code enter into the "print_newline:" function
+    # and prints the bunch of new line and end the map function call there i.e below "jr ra" which is incorrect
+    jr ra
 
 print_newline:
     li a1, '\n'
